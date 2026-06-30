@@ -58,10 +58,14 @@ export function useSimulation() {
         vy = 0
       }
 
+      const isStubborn = Math.random() < 0.15;
+      const initialOpinion = isStubborn ? (Math.random() > 0.5 ? 0.9 : 0.1) : Math.random();
+
       newAgents.push({
         id: crypto.randomUUID(),
-        opinion: Math.random(),
-        susceptibility: Math.random(),
+        opinion: initialOpinion, // Передаем наше новое мнение
+        susceptibility: isStubborn ? 0 : (0.3 + Math.random() * 0.7),
+        isStubborn: isStubborn, 
         x: ax,
         y: ay,
         vx: vx,
@@ -97,10 +101,10 @@ export function useSimulation() {
         a.x += a.vx
         a.y += a.vy
 
-        if (a.x <= 0) { a.x = 0; a.vx = Math.abs(a.vx); }
-        if (a.x >= MAP_W) { a.x = MAP_W; a.vx = -Math.abs(a.vx); }
-        if (a.y <= 0) { a.y = 0; a.vy = Math.abs(a.vy); }
-        if (a.y >= MAP_H) { a.y = MAP_H; a.vy = -Math.abs(a.vy); }
+       if (a.x < 0) { a.x = MAP_W; a.inIntersection = false; }
+        else if (a.x > MAP_W) { a.x = 0; a.inIntersection = false; }
+      if (a.y < 0) { a.y = MAP_H; a.inIntersection = false; }
+        else if (a.y > MAP_H) { a.y = 0; a.inIntersection = false; }
 
         const onVRoad = vRoads.find(r => Math.abs(a.x - r.pos) < 2)
         const onHRoad = hRoads.find(r => Math.abs(a.y - r.pos) < 2)
@@ -197,6 +201,17 @@ export function useSimulation() {
     })
   }
 
+  const toggleBillboardOpinion = (id) => {
+    setBillboards(current =>
+      current.map(b => {
+        if (b.id === id) {
+          return { ...b, opinion: b.opinion > 0.5 ? 0.1 : 0.9 }
+        }
+        return b
+      })
+    )
+  }
+
   useEffect(() => {
     const tick = () => {
       doStep()
@@ -210,7 +225,7 @@ export function useSimulation() {
     }
     return () => cancelAnimationFrame(requestRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSimulating])
+  }, [isSimulating, billboards])
 
-  return { agents, billboards, roads, isSimulating, setIsSimulating, initSimulation, doStep }
+  return { agents, billboards, roads, isSimulating, setIsSimulating, initSimulation, doStep, toggleBillboardOpinion }
 }

@@ -5,8 +5,28 @@ import './App.css'
 function App() {
   const { agents, billboards, roads, isSimulating, setIsSimulating, initSimulation, doStep } = useSimulation()
 
-  return (
-    <div className="simulation-container">
+  //вычислене статистики в реальном времени
+  const totalAgents = agents.length
+  
+  // Разделение обычных агентов по мнениям
+  const greenAgents = agents.filter(a => a.opinion > 0.5).length
+
+  // Проценты для графика
+  const greenPercent = totalAgents > 0 ? Math.round((greenAgents / totalAgents) * 100) : 50
+  const redPercent = totalAgents > 0 ? 100 - greenPercent : 50
+
+  // Статистика по лидерам мнений 
+  const stubbornAgents = agents.filter(a => a.isStubborn)
+  const greenLeaders = stubbornAgents.filter(a => a.opinion > 0.5).length
+  const redLeaders = stubbornAgents.length - greenLeaders
+
+  // Среднее мнение города 
+  const avgOpinion = totalAgents > 0 
+    ? (agents.reduce((sum, a) => sum + a.opinion, 0) / totalAgents).toFixed(2) 
+    : '0.00'
+
+ return (
+    <div className="simulation-container" style={{ maxWidth: '1050px', margin: '0 auto' }}>
       <h1>Симуляция распространения информации</h1>
       
       <div className="controls">
@@ -25,4 +45,4 @@ function App() {
   )
 }
 
-export default App
+  export default App
