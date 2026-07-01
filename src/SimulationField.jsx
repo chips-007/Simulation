@@ -5,15 +5,17 @@ const getAgentColor = (opinion) => {
   return `hsl(${hue}, 100%, 50%)`
 }
 
-export function SimulationField({ agents, billboards, roads = [], isSimulating }) {
+export function SimulationField({ agents, billboards, roads = [], isSimulating, onBillboardClick, onMapDoubleClick, onBillboardRightClick, selectedId }) {
   const SIZE_W = 500;
   const SIZE_H = 400;
 
-  const [zoom, setZoom] = useState(1) 
+  const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [startDrag, setStartDrag] = useState({ x: 0, y: 0 })
+  
   const containerRef = useRef(null)
+  const innerMapRef = useRef(null)
 
   const clampPan = (x, y, currentZoom) => {
     const scaledW = SIZE_W * currentZoom
@@ -53,8 +55,15 @@ export function SimulationField({ agents, billboards, roads = [], isSimulating }
   }
   const handleMouseUp = () => setIsDragging(false)
 
+  const handleDoubleClick = (e) => {
+    if (!innerMapRef.current || !onMapDoubleClick) return;
+    const rect = innerMapRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / zoom;
+    const y = (e.clientY - rect.top) / zoom;
+    onMapDoubleClick(x, y);
+  }
+
   return (
-    // Рамка-окно
     <div 
       ref={containerRef}
       onMouseDown={handleMouseDown}
@@ -64,7 +73,7 @@ export function SimulationField({ agents, billboards, roads = [], isSimulating }
       style={{
         width: `${SIZE_W}px`,   
         height: `${SIZE_H}px`,  
-        backgroundColor: '#1a2419', //зеленый фон
+        backgroundColor: '#1a2419',
         border: '1px solid #333',
         borderRadius: '8px',
         overflow: 'hidden', 
@@ -73,8 +82,9 @@ export function SimulationField({ agents, billboards, roads = [], isSimulating }
         touchAction: 'none' 
       }}
     >
-      {/*Город*/}
       <div 
+        ref={innerMapRef} 
+        onDoubleClick={handleDoubleClick} 
         style={{
           width: `${SIZE_W}px`,
           height: `${SIZE_H}px`,
@@ -84,7 +94,7 @@ export function SimulationField({ agents, billboards, roads = [], isSimulating }
           willChange: 'transform'
         }}
       >
-        {/*Дороги*/}
+        {/* Дороги */}
         {roads.map((road, index) => (
           <div key={`road-${index}`} style={{
             position: 'absolute',
@@ -97,7 +107,7 @@ export function SimulationField({ agents, billboards, roads = [], isSimulating }
           }} />
         ))}
 
-        {/*Билборды*/}
+        {/* Билборды */}
         {billboards && billboards.map((b) => (
           <div 
             key={`billboard-${b.id}`} 
@@ -111,14 +121,23 @@ export function SimulationField({ agents, billboards, roads = [], isSimulating }
               e.stopPropagation(); 
               if (onBillboardClick) onBillboardClick(b.id);
             }}
+            onContextMenu={(e) => {
+              e.preventDefault(); 
+              e.stopPropagation();
+              if (onBillboardRightClick) onBillboardRightClick(b.id);
+            }}
           >
             <div style={{
               position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
               width: `${b.radius * 2}px`, height: `${b.radius * 2}px`, borderRadius: '50%',
-              backgroundColor: getAgentColor(b.opinion), opacity: 0.15,
-              border: `2px dashed ${getAgentColor(b.opinion)}`,
-              pointerEvents: 'none' 
+              backgroundColor: getAgentColor(b.opinion), 
+              opacity: selectedId === b.id ? 0.4 : 0.15, 
+              border: selectedId === b.id ? `2px solid white` : `2px dashed ${getAgentColor(b.opinion)}`, 
+              boxShadow: selectedId === b.id ? `0 0 15px ${getAgentColor(b.opinion)}` : 'none',
+              pointerEvents: 'none',
+              transition: 'all 0.1s linear' 
             }} />
+            
             <div style={{
               position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
               width: '18px', height: '10px', backgroundColor: getAgentColor(b.opinion),
@@ -127,7 +146,7 @@ export function SimulationField({ agents, billboards, roads = [], isSimulating }
           </div>
         ))}
 
-        {/*Агенты*/}
+        {/* Агенты */}
         {agents.map((agent) => (
           <div
             key={agent.id}
