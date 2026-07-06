@@ -1,347 +1,242 @@
 import { useState, useEffect, useRef } from 'react'
+import { generateMapConfig, trySpawnRandomObstacle, MAP_W, MAP_H } from './simulation/Base'
+import { processAgentsStep } from './simulation/Human'
 
 export function useSimulation() {
-  const [agents, setAgents] = useState([])
-  const [billboards, setBillboards] = useState([])
-  const [roads, setRoads] = useState([])
-  const [isSimulating, setIsSimulating] = useState(false)
+  // Состояния
+  const [agents, setAgents] = useState([])           // Все жители, лидеры, промоутеры и ремонтники
+  const [billboards, setBillboards] = useState([])   // Билборды
+  const [roads, setRoads] = useState([])             // Дороги
+  const [obstacles, setObstacles] = useState([])     // Ямы на дорогах
+  const [buildings, setBuildings] = useState([])     // Здания
+  const [isSimulating, setIsSimulating] = useState(false) // Статус (Пауза/Старт)
+  // Ссылка на текущий кадр анимации 
   const requestRef = useRef()
 
-  const MAP_W = 500;
-  const MAP_H = 400;
-
-  const initSimulation = (config = { radius: 50, numAgents: 100, numBillboards: 4, greenLeaders: 5, redLeaders: 5 }) => {
-    const targetBillboards = Math.max(0, Math.min(10, config.numBillboards));
-    const targetAgents = Math.max(40, Math.min(170, config.numAgents));
-    const targetGreen = Math.max(2, Math.min(15, config.greenLeaders));
-    const targetRed = Math.max(2, Math.min(15, config.redLeaders));
-    const customRadius = config.radius || 50;
-
-    const newRoads = []
-    for (let x = 60; x < MAP_W - 40; x += 100 + Math.random() * 40) {
-      newRoads.push({ type: 'vertical', pos: x, width: 24 })
-    }
-    for (let y = 60; y < MAP_H - 40; y += 80 + Math.random() * 30) {
-      newRoads.push({ type: 'horizontal', pos: y, width: 24 })
-    }
-    
-    const vRoads = newRoads.filter(r => r.type === 'vertical')
-    const hRoads = newRoads.filter(r => r.type === 'horizontal')
-
-    const newBillboards = [];
-    let possibleSpots = [];
-    vRoads.forEach(vRoad => {
-      hRoads.forEach(hRoad => {
-         possibleSpots.push({ bx: vRoad.pos + 25, by: hRoad.pos - 25 });
-      });
-    });
-    possibleSpots.sort(() => Math.random() - 0.5);
-
-    for (let spot of possibleSpots) {
-      if (newBillboards.length >= targetBillboards) break;
-      
-      const isOverlapping = newBillboards.some(b => {
-        const dx = b.x - spot.bx;
-        const dy = b.y - spot.by;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < b.radius + customRadius; 
-      });
-
-      if (!isOverlapping) {
-        newBillboards.push({
-          id: crypto.randomUUID(),
-          x: spot.bx,
-          y: spot.by,
-          radius: customRadius,
-          opinion: Math.random() > 0.5 ? 0.9 : 0.1,
-          power: 0.05
-        });
-      }
-    }
-
-    const newAgents = [];
-    let agentsConfig = [];
-    
-    for (let i = 0; i < targetGreen; i++) {
-      agentsConfig.push({ opinion: 0.9, isStubborn: true, susceptibility: 0 });
-    }
-    for (let i = 0; i < targetRed; i++) {
-      agentsConfig.push({ opinion: 0.1, isStubborn: true, susceptibility: 0 });
-    }
-
-    const regularCount = targetAgents;
-    
-    for (let i = 0; i < regularCount; i++) {
-      const psychRand = Math.random();
-      let susceptibility;
-      if (psychRand < 0.2) susceptibility = 0.7 + Math.random() * 0.3; 
-      else if (psychRand < 0.8) susceptibility = 0.3 + Math.random() * 0.4; 
-      else susceptibility = Math.random() * 0.3; 
-      
-      agentsConfig.push({ opinion: Math.random(), isStubborn: false, susceptibility });
-    }
-
-    agentsConfig.sort(() => Math.random() - 0.5);
-
-    agentsConfig.forEach(agentConf => {
-      const isVert = Math.random() > 0.5;
-      let ax, ay, vx, vy;
-      const speed = 0.5 + Math.random() * 0.5; 
-
-      if (isVert && vRoads.length > 0) {
-        ax = vRoads[Math.floor(Math.random() * vRoads.length)].pos;
-        ay = Math.random() * MAP_H;
-        vx = 0;
-        vy = (Math.random() > 0.5 ? 1 : -1) * speed;
-      } else if (hRoads.length > 0) {
-        ax = Math.random() * MAP_W;
-        ay = hRoads[Math.floor(Math.random() * hRoads.length)].pos;
-        vx = (Math.random() > 0.5 ? 1 : -1) * speed;
-        vy = 0;
-      }
-
-      newAgents.push({
-        id: crypto.randomUUID(),
-        opinion: agentConf.opinion, 
-        susceptibility: agentConf.susceptibility,
-        isStubborn: agentConf.isStubborn, 
-        x: ax, y: ay, vx: vx, vy: vy,
-        inIntersection: false, friendIds: []
-      });
-    });
-
-    for (let agentA of newAgents) {
-      for (let agentB of newAgents) {
-        if (agentA.id !== agentB.id) {
-          const opinionDiff = Math.abs(agentA.opinion - agentB.opinion)
-          if (Math.random() < (0.2 - opinionDiff * 0.1)) {
-            agentA.friendIds.push(agentB.id)
-          }
-        }
-      }
-    }
-
-    setRoads(newRoads)
-    setBillboards(newBillboards)
-    setAgents(newAgents)
+  // Инициализация новой карты
+  const initSimulation = (config) => {
+    const data = generateMapConfig(config);
+    setRoads(data.newRoads); 
+    setBillboards(data.newBillboards); 
+    setObstacles(data.newObstacles); 
+    setBuildings(data.newBuildings); 
+    setAgents(data.newAgents);
   }
 
+  // Один (кадр) симуляции.
   const doStep = () => {
     setAgents(currentAgents => {
-      let updated = currentAgents.map(a => ({ ...a }))
-      const vRoads = roads.filter(r => r.type === 'vertical')
-      const hRoads = roads.filter(r => r.type === 'horizontal')
-
-      for (let a of updated) {
-        a.x += a.vx
-        a.y += a.vy
-
-       if (a.x < 0) { a.x = MAP_W; a.inIntersection = false; }
-        else if (a.x > MAP_W) { a.x = 0; a.inIntersection = false; }
-      if (a.y < 0) { a.y = MAP_H; a.inIntersection = false; }
-        else if (a.y > MAP_H) { a.y = 0; a.inIntersection = false; }
-
-        const onVRoad = vRoads.find(r => Math.abs(a.x - r.pos) < 2)
-        const onHRoad = hRoads.find(r => Math.abs(a.y - r.pos) < 2)
-
-        if (onVRoad && onHRoad) {
-          if (!a.inIntersection) {
-            a.inIntersection = true
-            const speed = Math.abs(a.vx || a.vy)
-            let turned = false;
-
-            let nearestB = null;
-            let minDistance = Infinity;
-            for (let b of billboards) {
-              let dist = Math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2);
-              if (dist < minDistance) {
-                minDistance = dist;
-                nearestB = b;
-              }
-            }
-
-           if (nearestB) {
-              const opinionDiff = Math.abs(a.opinion - nearestB.opinion);
-              const dx = nearestB.x - a.x;
-              const dy = nearestB.y - a.y;
-
-              if (!a.isStubborn && a.susceptibility > 0.7 && minDistance > nearestB.radius && Math.random() < 0.25) {
-                if (Math.abs(dx) > Math.abs(dy)) {
-                  a.vy = 0; a.vx = (dx > 0 ? 1 : -1) * speed; a.y = onHRoad.pos;
-                } else {
-                  a.vx = 0; a.vy = (dy > 0 ? 1 : -1) * speed; a.x = onVRoad.pos;
-                }
-                turned = true;
-              }
-              else if (!a.isStubborn && a.susceptibility < 0.4 && opinionDiff > 0.5 && minDistance < (nearestB.radius + 70) && Math.random() < 0.25) {
-                if (Math.abs(dx) > Math.abs(dy)) {
-                  a.vy = 0; a.vx = (dx > 0 ? -1 : 1) * speed; a.y = onHRoad.pos;
-                } else {
-                  a.vx = 0; a.vy = (dy > 0 ? -1 : 1) * speed; a.x = onVRoad.pos;
-                }
-                turned = true;
-              }
-            }
-
-            if (!turned) {
-              if (Math.random() < 0.5) { 
-                if (a.vx === 0) { 
-                  a.vy = 0; a.vx = (Math.random() > 0.5 ? 1 : -1) * speed; a.y = onHRoad.pos;
-                } else { 
-                  a.vx = 0; a.vy = (Math.random() > 0.5 ? 1 : -1) * speed; a.x = onVRoad.pos;
-                }
-              }
-            }
-          }
-        } else {
-          a.inIntersection = false 
-        }
-
-        for (let b of billboards) {
-          let dx = a.x - b.x
-          let dy = a.y - b.y
-          if (dx * dx + dy * dy < b.radius * b.radius) {
-            a.opinion += (b.opinion - a.opinion) * b.power * a.susceptibility
-          }
-        }
-      }
-
-      const totalAgents = updated.length;
-      const greenAgentsCount = updated.filter(a => a.opinion > 0.5).length;
-      
-      const greenPowerRatio = totalAgents > 0 ? greenAgentsCount / totalAgents : 0.5;
-      const redPowerRatio = totalAgents > 0 ? 1 - greenPowerRatio : 0.5;
-
-      for (let i = 0; i < updated.length; i++) {
-        for (let j = i + 1; j < updated.length; j++) {
-          let a = updated[i]
-          let b = updated[j]
-          let dx = b.x - a.x
-          let dy = b.y - a.y
-          let distance = Math.sqrt(dx * dx + dy * dy)
-
-          if (distance < 5 && distance > 0) { 
-            if (a.isStubborn && b.isStubborn) {
-              if ((a.opinion > 0.5) !== (b.opinion > 0.5)) {
-                if (Math.random() < 0.1) {
-                  const aIsGreen = a.opinion > 0.5;
-                  const chanceForAToWin = aIsGreen ? greenPowerRatio : redPowerRatio;
-
-                  if (Math.random() < chanceForAToWin) {
-                    b.opinion = aIsGreen ? 0.9 : 0.1;
-                  } else {
-                    a.opinion = b.opinion > 0.5 ? 0.9 : 0.1;
-                  }
-                }
-              }
-            } 
-            else {
-              let diff = b.opinion - a.opinion
-              a.opinion += diff * 0.5 * a.susceptibility 
-              b.opinion -= diff * 0.5 * b.susceptibility 
-            }
-          }
-        }
-      }
-
-      for (let a of updated) {
-        const friends = updated.filter(other => a.friendIds.includes(other.id))
-        if (friends.length > 0) {
-          const sumOfFriendsOpinions = friends.reduce((sum, f) => sum + f.opinion, 0)
-          const averageFriendOpinion = sumOfFriendsOpinions / friends.length
-          a.opinion += (averageFriendOpinion - a.opinion) * 0.01 * a.susceptibility
-        }
-        a.opinion = Math.max(0, Math.min(1, a.opinion))
-      }
-
-      return updated
-    })
+      // Передача текущего состояния в физическую часть 
+      return processAgentsStep(currentAgents, { roads, obstacles, buildings, billboards }, { setBillboards, setObstacles });
+    });
+    // Попытка создать новую поломку дороги
+    trySpawnRandomObstacle(roads, obstacles, setObstacles);
   }
 
-  const toggleBillboardOpinion = (id) => {
-    setBillboards(current =>
-      current.map(b => {
-        if (b.id === id) {
-          return { ...b, opinion: b.opinion > 0.5 ? 0.1 : 0.9 }
-        }
-        return b
-      })
-    )
-  }
+  // Функции удаления и изменения 
+  const toggleBillboardOpinion = (id) => { setBillboards(current => current.map(b => b.id === id ? { ...b, opinion: b.opinion > 0.5 ? 0.1 : 0.9 } : b)) }
+  const removeBillboard = (id) => { setBillboards(current => current.filter(b => b.id !== id)) }
+  const removeObstacle = (id) => { setObstacles(curr => curr.filter(o => o.id !== id)); }
+  const removeAgent = (id) => { setAgents(curr => curr.filter(a => a.id !== id)); }
 
-const addBillboard = (x, y, newRadius = 50) => {
+  // Функции режима строительства 
+  // Установка нового билборда 
+  const addBillboard = (x, y, newRadius = 50) => {
     setBillboards(current => {
+      // Нельзя ставить на дорогу 
       const isOnRoad = roads.some(road => {
         const margin = 12; 
-        if (road.type === 'vertical') {
+        if (road.type === 'vertical') 
           return Math.abs(x - road.pos) < (road.width / 2 + margin);
-        } else {
-          return Math.abs(y - road.pos) < (road.width / 2 + margin);
-        }
+        return Math.abs(y - road.pos) < (road.width / 2 + margin);
       });
+      if (isOnRoad) 
+        return current;
 
-      if (isOnRoad) return current;
+      // Радиусы влияния билбордов не должны пересекаться
+      const isOverlapping = current.some(b => Math.sqrt((b.x - x)**2 + (b.y - y)**2) < b.radius + newRadius);
+      if (isOverlapping) 
+        return current;
 
-      const isOverlapping = current.some(b => {
-        const dx = b.x - x;
-        const dy = b.y - y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < b.radius + newRadius; 
-      });
+      // Билборд нельзя поставить на самом здании
+      const isOverlappingBld = buildings.some(bld => Math.sqrt((bld.x - x)**2 + (bld.y - y)**2) < 30);
+      if (isOverlappingBld) 
+        return current;
 
-      if (isOverlapping) return current;
-
-      return [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          x: x,
-          y: y,
-          radius: newRadius,
-          opinion: Math.random() > 0.5 ? 0.9 : 0.1,
-          power: 0.05
-        }
-      ];
+      // Если проверки пройдены, добавляется новый
+      return [...current, { id: crypto.randomUUID(), x, y, radius: newRadius, opinion: Math.random() > 0.5 ? 0.9 : 0.1, power: 0.05 }];
     });
   }
 
+  //Изменение радиуса билборда через ползунок 
   const changeBillboardRadius = (id, newRadius) => {
     setBillboards(current => {
       const target = current.find(b => b.id === id);
-      if (!target) return current;
-
-      const isOverlapping = current.some(b => {
-        if (b.id === id) return false; 
-        const dx = b.x - target.x;
-        const dy = b.y - target.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < b.radius + newRadius;
-      });
-
-      if (isOverlapping) return current;
-
+      if (!target) 
+        return current;
+      // Проверка, не пересекутся ли радиусы влияния с соседними билбордами
+      const isOverlapping = current.some(b => b.id !== id && Math.sqrt((b.x - target.x)**2 + (b.y - target.y)**2) < b.radius + newRadius);
+      if (isOverlapping) 
+        return current; // Блокировка увеличения, если нет места
       return current.map(b => b.id === id ? { ...b, radius: newRadius } : b);
     });
   }
 
-  const removeBillboard = (id) => {
-    setBillboards(current => current.filter(b => b.id !== id))
+  // Создание ямы на дороге 
+  const addObstacle = (x, y) => {
+    setObstacles(curr => {
+      const margin = 20; let snapX, snapY;
+      // Поиск самой близкой дороги к месту клика
+      let vRoad = roads.find(r => r.type === 'vertical' && Math.abs(r.pos - x) < margin);
+      let hRoad = roads.find(r => r.type === 'horizontal' && Math.abs(r.pos - y) < margin);
+
+      // Примагничивание ямы ровно к центру дороги или перекрестку
+      if (vRoad && hRoad) 
+        { snapX = vRoad.pos; snapY = hRoad.pos; } 
+      else if (vRoad) 
+        { snapX = vRoad.pos; snapY = y; } 
+      else if (hRoad) 
+        { snapX = x; snapY = hRoad.pos; } 
+      else 
+        { return curr; } // Клик был слишком далеко от дороги
+
+      // Проверка, чтобы не ставить яму поверх другой ямы
+      const isOverlappingObs = curr.some(obs => Math.abs(obs.x - snapX) < 16 && Math.abs(obs.y - snapY) < 16);
+      if (isOverlappingObs) 
+        return curr;
+
+      return [...curr, { id: crypto.randomUUID(), x: snapX, y: snapY, size: 14 }];
+    });
   }
 
-  useEffect(() => {
-    const tick = () => {
-      doStep()
-      requestRef.current = requestAnimationFrame(tick)
-    }
+  // Спавн промоутера
+  const addPromoter = (x, y, isGreen) => {
+    setAgents(curr => {
+      const margin = 20; let snapX, snapY; let vx = 0, vy = 0;
+      let vRoad = roads.find(r => r.type === 'vertical' && Math.abs(r.pos - x) < margin);
+      let hRoad = roads.find(r => r.type === 'horizontal' && Math.abs(r.pos - y) < margin);
 
-    if (isSimulating) {
-      requestRef.current = requestAnimationFrame(tick)
-    } else {
-      cancelAnimationFrame(requestRef.current)
+      // Спавн на дороге и задание начального направления движения
+      if (vRoad) 
+        { snapX = vRoad.pos; snapY = y; vy = (Math.random() > 0.5 ? 1 : -1) * 0.4; } 
+      else if (hRoad) 
+        { snapX = x; snapY = hRoad.pos; vx = (Math.random() > 0.5 ? 1 : -1) * 0.4; } 
+      else 
+        { return curr; } 
+
+      return [...curr, {
+        id: crypto.randomUUID(), opinion: isGreen ? 0.95 : 0.05, susceptibility: 0, isStubborn: true, isPromoter: true, isRepairman: false,
+        x: snapX, y: snapY, vx, vy, inIntersection: false, friendIds: [], extremeTicks: 0, leaderAge: 0, bounceCooldown: 0,
+        inBuildingId: null, buildingTimer: 0, savedX: 0, savedY: 0, savedVx: 0, savedVy: 0, repairTimer: 0, targetObsId: null
+      }];
+    });
+  }
+
+  // Спавн ремонтника 
+  const addRepairman = (x, y) => {
+    setAgents(curr => {
+      const margin = 20; let snapX, snapY; let vx = 0, vy = 0;
+      let vRoad = roads.find(r => r.type === 'vertical' && Math.abs(r.pos - x) < margin);
+      let hRoad = roads.find(r => r.type === 'horizontal' && Math.abs(r.pos - y) < margin);
+
+      const speed = 0.8; 
+      if (vRoad) 
+        { snapX = vRoad.pos; snapY = y; vy = (Math.random() > 0.5 ? 1 : -1) * speed; } 
+      else if (hRoad) 
+        { snapX = x; snapY = hRoad.pos; vx = (Math.random() > 0.5 ? 1 : -1) * speed; } 
+      else 
+        { return curr; } 
+
+      return [...curr, {
+        id: crypto.randomUUID(), opinion: 0.5, susceptibility: 0, isStubborn: true, isPromoter: false, isRepairman: true,
+        x: snapX, y: snapY, vx, vy, inIntersection: false, friendIds: [], extremeTicks: 0, leaderAge: 0, bounceCooldown: 0,
+        inBuildingId: null, buildingTimer: 0, savedX: 0, savedY: 0, savedVx: 0, savedVy: 0, repairTimer: 0, targetObsId: null
+      }];
+    });
+  }
+
+  // Спавн здания
+  const addBuilding = (x, y) => {
+    setBuildings(curr => {
+      const margin = 40; 
+      let snapX = null, snapY = null;
+      
+      let vRoad = roads.find(r => r.type === 'vertical' && Math.abs(r.pos - x) < margin);
+      let hRoad = roads.find(r => r.type === 'horizontal' && Math.abs(r.pos - y) < margin);
+
+      if (!vRoad && !hRoad) return curr;
+
+      // Здание ставится вплотную к дороге 
+      if (vRoad && hRoad) {
+        if (Math.abs(vRoad.pos - x) < Math.abs(hRoad.pos - y)) {
+          snapX = vRoad.pos + (x > vRoad.pos ? 29 : -29); snapY = y;
+        } 
+        else {
+          snapX = x; snapY = hRoad.pos + (y > hRoad.pos ? 29 : -29);
+        }
+      } 
+      else if (vRoad) {
+        snapX = vRoad.pos + (x > vRoad.pos ? 29 : -29); snapY = y;
+      } 
+      else if (hRoad) {
+        snapX = x; snapY = hRoad.pos + (y > hRoad.pos ? 29 : -29);
+      }
+
+      // Не строятся за границами карты, на перекрестках или поверх билбордов/других зданий
+      if (snapX < 20 || snapX > MAP_W - 20 || snapY < 20 || snapY > MAP_H - 20) 
+        return curr;
+      const isOnRoad = roads.some(road => {
+        if (road.type === 'vertical') 
+          return Math.abs(snapX - road.pos) < 28;
+        return Math.abs(snapY - road.pos) < 28;
+      });
+      if (isOnRoad) 
+        return curr;
+      const isOverlappingBB = billboards.some(b => Math.sqrt((b.x - snapX)**2 + (b.y - snapY)**2) < 30);
+      if (isOverlappingBB) 
+        return curr;
+      const isOverlappingBld = curr.some(b => Math.abs(b.x - snapX) < 32 && Math.abs(b.y - snapY) < 32);
+      if (isOverlappingBld) 
+        return curr;
+
+      return [...curr, { id: crypto.randomUUID(), x: snapX, y: snapY, w: 30, h: 30 }];
+    });
+  }
+
+  // Удаление здания с обработкой агентов в нем 
+  const removeBuilding = (id) => {
+    setBuildings(curr => curr.filter(b => b.id !== id));
+    // Если здание убрано, нужно выгнать всех агентов обратно на улицу
+    setAgents(curr => curr.map(a => {
+      if (a.inBuildingId === id) {
+        return { ...a, inBuildingId: null, x: a.savedX, y: a.savedY, vx: a.savedVx, vy: a.savedVy, bounceCooldown: 15 };
+      }
+      return a;
+    }));
+  }
+
+  // Цикл работы симуляции
+  useEffect(() => {
+    const tick = () => { 
+      doStep(); 
+      requestRef.current = requestAnimationFrame(tick); 
     }
+    
+    // Если снято с паузы - запуск цикла
+    if (isSimulating) 
+      requestRef.current = requestAnimationFrame(tick)
+    // Если пауза - отмена следующего кадра
+    else cancelAnimationFrame(requestRef.current)
+    
+    // Очистка при перезапуске
     return () => cancelAnimationFrame(requestRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSimulating, billboards])
+  }, [isSimulating, billboards, obstacles, buildings])
 
-  return { agents, billboards, roads, isSimulating, setIsSimulating, initSimulation, doStep, toggleBillboardOpinion, addBillboard, changeBillboardRadius, removeBillboard }
+  return { 
+    agents, billboards, roads, obstacles, buildings, 
+    isSimulating, setIsSimulating, initSimulation, doStep, 
+    toggleBillboardOpinion, addBillboard, changeBillboardRadius, removeBillboard, 
+    addObstacle, removeObstacle, addPromoter, removeAgent, addBuilding, removeBuilding, addRepairman 
+  }
 }
