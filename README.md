@@ -1,4 +1,4 @@
-# 🏙️ [Симуляция динамики мнений (Opinion Dynamics Simulation)](https://chips-007.github.io/Simulation/) <-- Кликай и играй!
+# 🏙️ [Симуляция динамики мнений](https://chips-007.github.io/Simulation/) <-- Кликай и играй!
 
 ![React](https://img.shields.io/badge/react-%2320232a.svg?style=flat&logo=react&logoColor=%2361DAFB) ![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=flat&logo=vite&logoColor=white) ![JavaScript](https://img.shields.io/badge/javascript-%23323330.svg?style=flat&logo=javascript&logoColor=%23F7DF1E) ![License](https://img.shields.io/badge/license-MIT-green)
 
