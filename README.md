@@ -3,6 +3,7 @@
 ![React](https://img.shields.io/badge/react-%2320232a.svg?style=flat&logo=react&logoColor=%2361DAFB) ![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=flat&logo=vite&logoColor=white) ![JavaScript](https://img.shields.io/badge/javascript-%23323330.svg?style=flat&logo=javascript&logoColor=%23F7DF1E) ![License](https://img.shields.io/badge/license-MIT-green)
 
 Браузерная симуляция распространения идей и мнений в обществе. Жители города перемещаются по улицам, общаются друг с другом, попадают под влияние идеологических лидеров, уличной рекламы и социальных связей. Наблюдайте за тем, как формируются фракции, происходят стычки и идеологические революции в режиме реального времени.
+<img width="1904" height="1526" alt="{B8FD3AFB-1B4D-4C10-8D5F-19A4A9628BCF}" src="https://github.com/user-attachments/assets/49e1c6ad-7bf7-47e2-b0e1-df5c653a009f" />
 
 ---
 
